@@ -1,0 +1,103 @@
+#!/bin/bash
+
+# Reset
+ALL_FORMATS_OFF='\033[0m'
+
+# Foreground Colors
+RED='\e[31m'
+GREEN='\e[32m'
+MAGENTA='\e[35m'
+
+echo
+echo "Start checking for $1"
+
+BASE_URL="https://$(echo $1 | cut -d'/' -f 1)/v2"
+REPOSITORY="$(echo $1 | cut -d'/' -f 2 | cut -d':' -f 1)"
+SEARCH_TAG="$(echo $1 | cut -d'/' -f 2 | cut -d':' -f 2)"
+
+echo $BASE_URL
+echo $REPOSITORY
+echo $SEARCH_TAG
+echo
+
+function get_tag_list {
+    #GET the list from the registry
+    echo "Getting list of tags for $REPOSITORY..."
+    TAGS=$(curl --no-progress-meter "$BASE_URL/$REPOSITORY/tags/list" | jq .tags)
+    readarray -t TAGS < <(echo $TAGS | jq -cr '.[]')
+    
+    #Pretty Print Info
+    TAGS_PP=$(printf ',\n\t%s' "${TAGS[@]}")
+    echo "$REPOSITORY tags: ${TAGS_PP:1}"
+}
+
+function get_tag_manifest {
+    DIGEST=$(curl --no-progress-meter "$BASE_URL/$REPOSITORY/manifests/$1" -H "Accept: application/vnd.docker.distribution.manifest.v2+json" -X GET | jq .config.digest)
+}
+#!/bin/bash
+# Reset
+ALL_FORMATS_OFF='\033[0m'
+
+# Foreground Colors
+RED='\e[31m'
+GREEN='\e[32m'
+MAGENTA='\e[35m'
+
+echo
+echo "Start checking for $1"
+
+BASE_URL="https://$(echo $1 | cut -d'/' -f 1)/v2"
+REPOSITORY="$(echo $1 | cut -d'/' -f 2 | cut -d':' -f 1)"
+SEARCH_TAG="$(echo $1 | cut -d'/' -f 2 | cut -d':' -f 2)"
+
+echo $BASE_URL
+echo $REPOSITORY
+echo $SEARCH_TAG
+echo
+
+function get_tag_list {
+    #GET the list from the registry
+    echo "Getting list of tags for $REPOSITORY..."
+    TAGS=$(curl --no-progress-meter "$BASE_URL/$REPOSITORY/tags/list" | jq .tags)
+    readarray -t TAGS < <(echo $TAGS | jq -cr '.[]')
+    
+    #Pretty Print Info
+    TAGS_PP=$(printf ',\n\t%s' "${TAGS[@]}")
+    echo "$REPOSITORY tags: ${TAGS_PP:1}"
+}
+
+function get_tag_manifest {
+    DIGEST=$(curl --no-progress-meter "$BASE_URL/$REPOSITORY/manifests/$1" -H "Accept: application/vnd.docker.distribution.manifest.v2+json" -X GET | jq .config.digest)
+}
+
+get_tag_manifest $SEARCH_TAG
+SEARCH_TAG_DIGEST=$DIGEST && DIGEST=""
+echo -e "The digest for $BASE_URL/$REPOSITORY:$SEARCH_TAG is: \n\t$SEARCH_TAG_DIGEST"
+echo
+
+get_tag_list
+echo
+echo "Comparing target digest to all tags in $REPOSITORY..."
+echo
+
+FINAL_MESSAGE="${GREEN}SAFE:${ALL_FORMATS_OFF} There were no matches. Tag ${MAGENTA}$SEARCH_TAG${ALL_FORMATS_OFF} is safe to delete ${ALL_FORMATS_OFF}"
+MATCH_NUM=0
+for tag in ${TAGS[@]}
+do
+    [[ "$tag" != "$SEARCH_TAG" ]] && get_tag_manifest $tag
+    [[ "$DIGEST" == "$SEARCH_TAG_DIGEST" ]] && echo && echo -e "${RED}MATCH:${ALL_FORMATS_OFF} ${GREEN}$SEARCH_TAG = $tag${ALL_FORMATS_OFF} with digest: $DIGEST" && ((MATCH_NUM+=1)) && FINAL_MESSAGE="${RED}WARNING:${ALL_FORMATS_OFF} ${MAGENTA}$SEARCH_TAG${ALL_FORMATS_OFF} matched with ${MAGENTA}$MATCH_NUM${ALL_FORMATS_OFF} other tags. Please Manually validate before deleting the above tags! "
+done
+
+echo
+echo -e $FINAL_MESSAGE
+
+FINAL_MESSAGE="${GREEN}SAFE:${ALL_FORMATS_OFF} There were no matches. Tag ${MAGENTA}$SEARCH_TAG${ALL_FORMATS_OFF} is safe to delete ${ALL_FORMATS_OFF}"
+MATCH_NUM=0
+for tag in ${TAGS[@]}
+do
+    [[ "$tag" != "$SEARCH_TAG" ]] && get_tag_manifest $tag
+    [[ "$DIGEST" == "$SEARCH_TAG_DIGEST" ]] && echo && echo -e "${RED}MATCH:${ALL_FORMATS_OFF} ${GREEN}$SEARCH_TAG = $tag${ALL_FORMATS_OFF} with digest: $DIGEST" && ((MATCH_NUM+=1)) && FINAL_MESSAGE="${RED}WARNING:${ALL_FORMATS_OFF} ${MAGENTA}$SEARCH_TAG${ALL_FORMATS_OFF} matched with ${MAGENTA}$MATCH_NUM${ALL_FORMATS_OFF} other tags. Please Manually validate before deleting the above tags! "
+done
+
+echo
+echo -e $FINAL_MESSAGE
